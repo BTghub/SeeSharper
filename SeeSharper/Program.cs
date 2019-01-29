@@ -3,11 +3,13 @@
  * Author: Brian Fehrman (fullmetalcache)
  * Date: 2018-12-27
  * Description:
- *      This is the main entroy point for the SeeSharper program. 
+ *      This is the main entry point for the SeeSharper program. 
  */
 
 using CommandLine;
 using System.Collections.Generic;
+using System.Threading.Tasks;
+using System.IO;
 
 namespace SeeSharper
 {
@@ -15,7 +17,7 @@ namespace SeeSharper
     {
         enum FileType { Nessus, HostFile };
 
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
             int threads = 1;
             int timeout = 30;
@@ -98,16 +100,26 @@ namespace SeeSharper
                 System.Console.WriteLine(host);
             }
 
+            //Remove previous report if it exist
+            if (File.Exists("SeeSharpestReport.html"))
+            {
+                File.Delete("SeeSharpestReport.html");
+            }
+
             //Create a new WebShot object for screenshotting.
             WebShot webshot = new WebShot(threads, timeout);
 
+            System.Console.WriteLine("Beginning to take screenshots...");
+            //Take a screenshot of each host.
+            int total = 0; //Tally up number of screenshots taken
+            foreach (string host in hostList)
+            {
+                await webshot.ScreenShot(host);
+                total += 1;
+            }
 
-            //Some examples of screenshotting for now...
-            //webshot.ScreenShot("https://google.com");
-            //webshot.ScreenShot("https://www.blackhillsinfosec.com");
-            //webshot.ScreenShot("http://www.reddit.com");
-
-
+            Reporter.FinalizeReport();
+            System.Console.WriteLine("Screenshots completed! Total taken: {0}", total);
         }
     }
 

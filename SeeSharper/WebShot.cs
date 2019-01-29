@@ -28,75 +28,74 @@ using System.Threading;
 using System.Windows.Forms;
 using System.Net;
 using System.IO;
+using System.Net.Http;
+using System.Threading.Tasks;
 
 namespace SeeSharper
 {
     class WebShot
     {
-        private static Object _lockObject = new Object();
+        //private static Object _lockObject = new Object();
         private int _maxThreads;
         private int _threadsActive = 0;
-        private int _timeout = 30000;
+        private HttpClient _webClient;
+        private Reporter reporter;
 
-        public WebShot( int maxThreads, int timeout )
+        public WebShot( int maxThreads, int timeout)
         {
             _maxThreads = maxThreads;
-            _timeout = timeout * 1000;
+            _webClient = new HttpClient();
+            _webClient.Timeout = new TimeSpan(0,0,timeout); //sets request timeout to `timeout` seconds
+            _webClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:64.0) Gecko/20100101 Firefox/64.0");
+            _webClient.DefaultRequestHeaders.Add("Accept", "text/html"); //needed or you get flagged by godaddy dos protection
+            //Create a new Reporter object for generating the final report
+            reporter = new Reporter();
         }
 
         /// <summary>
-        /// Function to create a screenshot of a given website
+        /// Function to create a screenshot of a given website.
+        /// SSL Certificate errors are ignored.
         /// </summary>
         /// <param name="url">URL of Site to Screenshot</param>
-        public void ScreenShot(string url)
-        {
-            //Screenshot Width and Height
-            int width = 1024;
-            int height = 768;
-
-            string tempFile = GetHTML(url);
-            if (tempFile != "")
-            {
-                ScreenshotFile(tempFile, width, height);
-
-            }
-        }
-        /// <summary>
-        /// Retrieves the HTML from a given URL, saves it to a file,
-        /// and then returns the name of the file. SSL Certificate
-        /// errors are ignored
-        /// </summary>
-        /// <param name="url">URL to retrieve</param>
-        /// <returns>Name of file to which HTML was saved</returns>
-        private string GetHTML(string url)
+        public async Task ScreenShot(string url)
         {
             //This line is needed to ignore cert errors
-            ServicePointManager.ServerCertificateValidationCallback += (sender, certificate, chain, sslPolicyErrors) => true;
-
-            //Create a webrequest, get the response, convert the response into HTML text
-            WebRequest request = WebRequest.Create(url);
-            request.Timeout = _timeout;
+            ServicePointManager.ServerCertificateValidationCallback += (sender, certificate, chain, sslPolicyErrors) => true; 
             string responseFromServer = "";
 
             try
             {
-                WebResponse response = request.GetResponse();
-                Stream dataStream = response.GetResponseStream();
-                StreamReader reader = new StreamReader(dataStream);
-                responseFromServer = reader.ReadToEnd();
+                HttpResponseMessage resp = await _webClient.GetAsync(url);
+                byte[] rfs = await resp.Content.ReadAsByteArrayAsync();
+                responseFromServer = System.Text.Encoding.UTF8.GetString(rfs, 0, rfs.Length);
+
+                if (resp.IsSuccessStatusCode)
+                {
+                    //Write HTML text to a file
+                    string tempFile = url.Replace("://", "_");
+                    tempFile = tempFile.Replace(".", "_");
+                    tempFile = tempFile.Replace(":", "_"); // illegal character in file names
+                    File.WriteAllText(tempFile + ".html", responseFromServer);
+
+                    //Generate HTML for report
+                    string filename = String.Format("{0}.jpeg", tempFile);
+                    string rcode = resp.StatusCode.ToString();
+                    reporter.CreateHTML(filename, url, rcode);
+
+                    //return tempFile;
+                    ScreenshotFile(tempFile, 1920, 1080);
+                } else
+                {
+                    Console.WriteLine("No HTML File produced.");
+                }
+
             }
-            catch
+            catch (Exception ex)
             {
                 Console.WriteLine(String.Format("Timeout or Error reaching:{0}", url));
-                return "";
+                Console.WriteLine("Error: {0}", ex);
             }
 
-            //Write HTML text to a file
-            string tempFile = url.Replace("://", "_");
-            tempFile = tempFile.Replace(".", "_");
-            File.WriteAllText(tempFile + ".html", responseFromServer);
-
-            return tempFile;
         }
 
         /// <summary>
@@ -118,18 +117,20 @@ namespace SeeSharper
                 //Set resolution and ignore JavaScript errors in the page
                 WebBrowser browser = new WebBrowser();
                 browser.ScriptErrorsSuppressed = true;
+                browser.AllowNavigation = true;
+                browser.ScrollBarsEnabled = false;
                 browser.Width = width;
                 browser.Height = height;
-
-                //Add a callback function for when the site has been fully rendered
-                //This callback function is where the actual screenshotting takes place
-                browser.DocumentCompleted += OnDocumentCompleted;
+                browser.Name = fileName;
 
                 //Open the saved HTML file and render it
                 string curDir = Directory.GetCurrentDirectory();
                 Uri uri = new Uri(String.Format("file:///{0}/{1}.html", curDir, fileName));
-                browser.Name = fileName;
                 browser.Navigate(uri);
+
+                //Add a callback function for when the site has been fully rendered
+                //This callback function is where the actual screenshotting takes place
+                browser.DocumentCompleted += OnDocumentCompleted;
 
                 //Forces thread to wait until Application.ExitThread() is called in the 
                 //OnDocumentCompleted callback function. This ensures that the WebBrowser
@@ -138,20 +139,21 @@ namespace SeeSharper
                 Application.Run();
             });
 
-            //Set to Single Threaded Application (STA) to all for the threading to work correctly
-            th.SetApartmentState(ApartmentState.STA);
-
             //Wait if we have reached the maximum number of active threads
             while (_threadsActive >= _maxThreads)
             {
                 Thread.Sleep(500);
             }
-
+            
             //Updated the number of active threads
-            lock (_lockObject)
+            /*lock (_lockObject)
             {
                 _threadsActive += 1;
-            }
+            }*/
+            Interlocked.Increment(ref _threadsActive); //equivalent to above but more efficient, according to MSDOCS
+
+            //Set to Single Threaded Application (STA) to all for the threading to work correctly
+            th.SetApartmentState(ApartmentState.STA);
 
             //Start the latest thread
             th.Start();
@@ -174,10 +176,19 @@ namespace SeeSharper
             {
                 Rectangle bounds = new Rectangle(0, 0, bitmap.Width, bitmap.Height);
                 browser.DrawToBitmap(bitmap, bounds);
-            
-                Bitmap resized = new Bitmap(bitmap, new Size(bitmap.Width, bitmap.Height));
+
+                /*Bitmap resized = new Bitmap(bitmap, new Size(bitmap.Width, bitmap.Height));
                 String filename = String.Format("{0}.jpeg", browser.Name);
-                resized.Save(filename, ImageFormat.Jpeg);
+                resized.Save(filename, ImageFormat.Jpeg);*/
+                Image img = (Image)bitmap.Clone();
+                String filename = String.Format("{0}.jpeg", browser.Name);
+                using (var stream = new MemoryStream())
+                {
+                    img.Save(stream, ImageFormat.Jpeg);
+                    var bytes = stream.ToArray();
+                    File.WriteAllBytes(filename, bytes);
+                }
+
             }
 
             //Delete the temporary HTML file that was created in the ScreenShot method
@@ -185,13 +196,14 @@ namespace SeeSharper
             File.Delete(String.Format("{0}/{1}.html", curDir, browser.Name));
 
             //Decrement the number of active threads
-            lock (_lockObject)
+            /*lock (_lockObject)
             {
                 _threadsActive -= 1;
-            }
-
+            }*/
+            Interlocked.Decrement(ref _threadsActive); //equivalent to above but more efficient, according to MSDOCS
             //Allow the thread to exit and the objects to be destroyed
             Application.ExitThread();
         }
+ 
     }
 }
