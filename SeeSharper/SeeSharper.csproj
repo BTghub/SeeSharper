@@ -74,9 +74,11 @@
     <None Include="bin\Debug\report.template" />
     <None Include="bin\Debug\SSreport.template" />
     <None Include="packages.config" />
+    <None Include="SSreport.template" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Parsers\PortList.txt" />
+    <None Include="report.template" />
     <None Include="Resources\ScreenshotTemplate.txt" />
     <None Include="Resources\ReportTemplate.txt" />
     <None Include="Resources\Report.template.txt" />
