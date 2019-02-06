@@ -16,6 +16,7 @@ namespace SeeSharper
     class Program
     {
         enum FileType { Nessus, HostFile };
+        public static int taken = 0; //Tally up total of screenshots taken
 
         static async Task Main(string[] args)
         {
@@ -47,7 +48,7 @@ namespace SeeSharper
                     //Automatically determine file type
                     try
                     {
-                        System.IO.StreamReader file = new System.IO.StreamReader(fileName);
+                        StreamReader file = new StreamReader(fileName);
                         string line = file.ReadLine();
 
                         if (line != null)
@@ -73,7 +74,7 @@ namespace SeeSharper
                 });
 
             //This takes care of if the --help option was used
-            if( argResults.Tag == CommandLine.ParserResultType.NotParsed )
+            if( argResults.Tag == ParserResultType.NotParsed )
             {
                 System.Environment.Exit(1);
             }
@@ -95,9 +96,11 @@ namespace SeeSharper
                 System.Environment.Exit(1);
             }
 
+            int total = 0; //completion method condition
             foreach (string host in hostList)
             {
                 System.Console.WriteLine(host);
+                total += 1;
             }
 
             //Remove previous report if it exist
@@ -111,15 +114,26 @@ namespace SeeSharper
 
             System.Console.WriteLine("Beginning to take screenshots...");
             //Take a screenshot of each host.
-            int total = 0; //Tally up number of screenshots taken
+            string safeHost; //Used to replace host missing http 
             foreach (string host in hostList)
             {
-                await webshot.ScreenShot(host);
-                total += 1;
+                safeHost = host;
+                if (!safeHost.StartsWith("http"))
+                {
+                    safeHost = "http://" + safeHost;
+                }
+                await webshot.ScreenShot(safeHost);
+            }
+
+            while (Program.taken < total) // wait for all screenshots to be taken
+            {
+                System.Threading.Thread.Sleep(500);
             }
 
             Reporter.FinalizeReport();
-            System.Console.WriteLine("Screenshots completed! Total taken: {0}", total);
+            webshot._webClient.Dispose(); // clean up for HTTPclient object
+
+            System.Console.WriteLine("Screenshots completed! Total taken: {0}", Program.taken);
         }
     }
 

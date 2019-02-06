@@ -35,10 +35,9 @@ namespace SeeSharper
 {
     class WebShot
     {
-        //private static Object _lockObject = new Object();
         private int _maxThreads;
         private int _threadsActive = 0;
-        private HttpClient _webClient;
+        public HttpClient _webClient;
         private Reporter reporter;
 
         public WebShot( int maxThreads, int timeout)
@@ -137,6 +136,8 @@ namespace SeeSharper
                 //object is not destroyed until after it is consumed by the OnDocumentCompleted
                 //callback function.
                 Application.Run();
+
+                browser.Dispose(); //cleaning up before exiting
             });
 
             //Wait if we have reached the maximum number of active threads
@@ -145,12 +146,7 @@ namespace SeeSharper
                 Thread.Sleep(500);
             }
             
-            //Updated the number of active threads
-            /*lock (_lockObject)
-            {
-                _threadsActive += 1;
-            }*/
-            Interlocked.Increment(ref _threadsActive); //equivalent to above but more efficient, according to MSDOCS
+            Interlocked.Increment(ref _threadsActive); //equivalent to aquiring a lock then incrementing var
 
             //Set to Single Threaded Application (STA) to all for the threading to work correctly
             th.SetApartmentState(ApartmentState.STA);
@@ -195,14 +191,10 @@ namespace SeeSharper
             string curDir = Directory.GetCurrentDirectory();
             File.Delete(String.Format("{0}/{1}.html", curDir, browser.Name));
 
-            //Decrement the number of active threads
-            /*lock (_lockObject)
-            {
-                _threadsActive -= 1;
-            }*/
-            Interlocked.Decrement(ref _threadsActive); //equivalent to above but more efficient, according to MSDOCS
+            Interlocked.Decrement(ref _threadsActive); //equivalent to aquiring a lock then decrementing var
             //Allow the thread to exit and the objects to be destroyed
             Application.ExitThread();
+            Program.taken += 1; //increment completion condition
         }
  
     }

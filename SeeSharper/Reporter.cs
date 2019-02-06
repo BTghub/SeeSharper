@@ -4,7 +4,7 @@
  * Date: 2019-01-28
  * Description:
  *      Contains the code that generates the report file. Uses
- *      template files to create bases HTML code and then find and
+ *      template files to create base HTML code and then find and
  *      replace to dynamically generate each screenshots section.
  */
 
@@ -19,7 +19,8 @@ namespace SeeSharper
         public Reporter(string report_path = "SeeSharpestReport.html")
         {
             _reportPath = report_path;
-            //File.Copy("report.template", _reportPath); //Copies base template to report_path
+            
+            //copy base html to report file
             var byteArray = Properties.Resources.report;
             File.WriteAllBytes(_reportPath, byteArray);
         }
@@ -35,9 +36,8 @@ namespace SeeSharper
         /// <param name="rcode">Response code of the webrequest</param>
         public void CreateHTML(string filepath, string url, string rcode)
         {
-            //string fileContent = File.ReadAllText("SSreport.template");
-            var byteArray = Properties.Resources.SSreport;
-            string fileContent = System.Text.Encoding.Default.GetString(byteArray);
+            var byteArray = Properties.Resources.SSreport; //read-in embedded template file as array of bytes
+            string fileContent = System.Text.Encoding.Default.GetString(byteArray); //convert bytes to string type
             fileContent = fileContent.Replace("^^SCF^^", filepath);
             fileContent = fileContent.Replace("^^URL^^", url);
             fileContent = fileContent.Replace("^^RC^^", rcode);
